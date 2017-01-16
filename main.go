@@ -10,7 +10,7 @@ import (
 
 	"github.com/d2r2/go-dht"
 	// For controlling Orvibo stuff
-	"./libs/go-orvibo"
+	"github.com/pusnik/go-orvibo"
 )
 
 func monitorHumidity() {
@@ -90,7 +90,7 @@ func main() {
 		} else if command == "exit" || command == "no" {
 			os.Exit(3)
 		} else if command == "monitor" {
-			os.Exit(3)
+			monitorHumidity()
 		} else {
 			fmt.Println("Unknown command!")
 		}
