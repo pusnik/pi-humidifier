@@ -13,7 +13,7 @@ import (
 	"github.com/pusnik/go-orvibo"
 )
 
-func monitorHumidity() {
+func monitorHumidity(hum *PiHumidifier) {
 	sensorType := dht.DHT22
 	temperature, humidity, retried, err :=
 		dht.ReadDHTxxWithRetry(sensorType, 3, false, 10)
@@ -25,23 +25,64 @@ func monitorHumidity() {
 		temperature, humidity, retried)
 }
 
-func discoverSockets() map[string]*orvibo.Device {
-	//querry for sockets - print out sockets and wait for user input
-	// user input to recognize the correct socket can:
-	// select the socket id directly
-	// says to turn off/on the socket the recognize the correct one:
-	// These are our SetIntervals that run. To cancel one, simply send "<- true" to it (e.g. autoDiscover <- true)
-	//var autoDiscover chan bool
+//  States we can be in at any point in time
+type stateT int
+
+const (
+	_ = stateT(iota)
+	stateSTART
+	stateCONFIG               // start configuration
+	stateCONFIGSCAN           // scan for smart sockets
+	stateCONFIGSETSOCKET      // set which socket do we want to control
+	stateCONFIGSETTHRESHOLD   // set thresholds for humidifier
+	stateMONITOR              // in monitor mode
+	stateMONITORREADTEMPHUMID // read values from socket
+	stateMONITORSAVETODB      // save data to db to analize
+	stateMONITORCONTROLSOCKET // turn on/off the socket
+)
+
+//PiHumidifier is our main class
+type PiHumidifier struct {
+	state           stateT //  Current state
+	socket          *orvibo.Device
+	humidityLow     int
+	humidityHigh    int
+	discoverSockets func() map[string]*orvibo.Device
+	config          func()
+	monitorHumidity func()
+}
+
+func config(hum *PiHumidifier) {
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print("What can I do for you?\n")
+
+	for { // Loop forever
+		command, err := reader.ReadString('\n')
+		if err != nil {
+			log.Fatal(err)
+		}
+		command = strings.ToLower(strings.TrimSpace(command))
+
+		if command == "discover" {
+			hum.state = stateCONFIGSCAN
+		} else if command == "exit" || command == "no" {
+			os.Exit(3)
+		} else if command == "monitor" {
+			hum.state = stateMONITORREADTEMPHUMID
+		} else {
+			fmt.Println("Unknown command!")
+		}
+		fmt.Println("Done! Do you want anything else?")
+	}
+}
+
+func discoverSockets(hum *PiHumidifier) map[string]*orvibo.Device {
 	timeoutChan := time.NewTimer(time.Second * 5).C
 
 	ready, err := orvibo.Prepare() // You ready?
 	if ready == true {
 		fmt.Println("Searching...")
 
-		// Look for new devices every minute
-		//autoDiscover = setInterval(orvibo.Discover, time.Minute)
-		// Resubscription should happen every 5 minutes, but we make it 3, just to be on the safe side
-		//resubscribe = setInterval(orvibo.Subscribe, time.Minute*3)
 		orvibo.Discover() // Discover all sockets
 
 		//start go routine to check for messages
@@ -71,46 +112,21 @@ func discoverSockets() map[string]*orvibo.Device {
 	return orvibo.Devices
 }
 
-func main() {
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Print("What can I do for you?\n")
-
-	//add states to always know in what state are we in
-	//WAITING_FOR_INPUT, DISCOVERING, MONITORING
-
-	for { // Loop forever
-		command, err := reader.ReadString('\n')
-		if err != nil {
-			log.Fatal(err)
+func (hum *PiHumidifier) executeFsm() {
+	for {
+		switch hum.state {
+		case stateSTART:
+			hum.config()
+		case stateCONFIGSCAN:
+			hum.discoverSockets()
+		case stateMONITOR:
+			hum.monitorHumidity()
 		}
-		command = strings.ToLower(strings.TrimSpace(command))
-
-		if command == "discover" {
-			discoverSockets()
-		} else if command == "exit" || command == "no" {
-			os.Exit(3)
-		} else if command == "monitor" {
-			monitorHumidity()
-		} else {
-			fmt.Println("Unknown command!")
-		}
-		fmt.Println("Done! Do you want anything else?")
 	}
 }
 
-func setInterval(what func(), delay time.Duration) chan bool {
-	stop := make(chan bool)
-
-	go func() {
-		for {
-			what()
-			select {
-			case <-time.After(delay):
-			case <-stop:
-				return
-			}
-		}
-	}()
-
-	return stop
+func main() {
+	hum := &PiHumidifier{}
+	hum.state = stateSTART
+	hum.executeFsm()
 }
