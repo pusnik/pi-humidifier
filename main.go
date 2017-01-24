@@ -33,9 +33,9 @@ type piHumidifierInterface interface {
 }
 
 type measurement struct {
-	temperature int
-	humidity    int
-	datetime    time
+	temperature float32
+	humidity    float32
+	datetime    time.Time
 }
 
 //PiHumidifier is our main class
@@ -48,15 +48,16 @@ type PiHumidifier struct {
 	lastMeasurement *measurement
 }
 
-func () monitorHumidity() {
+func monitorHumidity() *measurement {
 	sensorType := dht.DHT22
-	temperature, humidity, retried, err :=
+	temperature, humidity, retried,  err :=
 		dht.ReadDHTxxWithRetry(sensorType, 3, false, 10)
 	if err != nil {
 		log.Fatal(err)
 	}
+	fmt.Print(retried)
 	// print temperature and humidity
-	return &measurement{temperature: temperature, humidity: humidity, datetime: Now()}
+	return &measurement{temperature,humidity,time.Now()}
 }
 
 func (hum *PiHumidifier) config() {
