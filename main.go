@@ -30,29 +30,33 @@ const (
 
 type piHumidifierInterface interface {
 	config()
-	discoverSockets() map[string]*orvibo.Device
-	monitorHumidity()
+}
+
+type measurement struct {
+	temperature int
+	humidity    int
+	datetime    time
 }
 
 //PiHumidifier is our main class
 type PiHumidifier struct {
-	state        stateT //  Current state
-	socket       *orvibo.Device
-	devices      map[string]*orvibo.Device
-	humidityLow  int
-	humidityHigh int
+	state           stateT //  Current state
+	socket          *orvibo.Device
+	devices         map[string]*orvibo.Device
+	humidityLow     int
+	humidityHigh    int
+	lastMeasurement *measurement
 }
 
-func (hum *PiHumidifier)  monitorHumidity() {
-        sensorType := dht.DHT22
-        temperature, humidity, retried, err :=
-                dht.ReadDHTxxWithRetry(sensorType, 3, false, 10)
-        if err != nil {
-                log.Fatal(err)
-        }
-        // print temperature and humidity
-        fmt.Printf("Temperature = %v*C, Humidity = %v%% (retried %d times)\n",
-                temperature, humidity, retried)
+func () monitorHumidity() {
+	sensorType := dht.DHT22
+	temperature, humidity, retried, err :=
+		dht.ReadDHTxxWithRetry(sensorType, 3, false, 10)
+	if err != nil {
+		log.Fatal(err)
+	}
+	// print temperature and humidity
+	return &measurement{temperature: temperature, humidity: humidity, datetime: Now()}
 }
 
 func (hum *PiHumidifier) config() {
@@ -72,7 +76,7 @@ func (hum *PiHumidifier) config() {
 			return
 		} else if command == "exit" || command == "no" {
 			os.Exit(3)
-		} else if command == "monitor" {
+		} else if command == "check" {
 			hum.state = stateMONITORREADTEMPHUMID
 			return
 		} else {
@@ -82,7 +86,7 @@ func (hum *PiHumidifier) config() {
 	}
 }
 
-func (hum *PiHumidifier) discoverSockets() map[string]*orvibo.Device {
+func discoverSockets() map[string]*orvibo.Device {
 	timeoutChan := time.NewTimer(time.Second * 5).C
 
 	ready, err := orvibo.Prepare() // You ready?
@@ -126,11 +130,13 @@ func (hum *PiHumidifier) executeFsm() {
 			fmt.Println("State Start")
 			hum.config()
 		case stateCONFIGSCAN:
-			hum.devices = hum.discoverSockets()
+			hum.devices = discoverSockets()
 			hum.state = stateSTART
 		case stateMONITORREADTEMPHUMID:
 			fmt.Println("State monitor")
-			hum.monitorHumidity()
+			hum.lastMeasurement = monitorHumidity()
+			fmt.Println(hum.lastMeasurement)
+			hum.state = stateSTART
 		}
 	}
 }
