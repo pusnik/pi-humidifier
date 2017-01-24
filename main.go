@@ -29,8 +29,7 @@ func monitorHumidity(hum *PiHumidifier) {
 type stateT int
 
 const (
-	_ = stateT(iota)
-	stateSTART
+	stateSTART                = stateT(iota)
 	stateCONFIG               // start configuration
 	stateCONFIGSCAN           // scan for smart sockets
 	stateCONFIGSETSOCKET      // set which socket do we want to control
@@ -41,18 +40,22 @@ const (
 	stateMONITORCONTROLSOCKET // turn on/off the socket
 )
 
-//PiHumidifier is our main class
-type PiHumidifier struct {
-	state           stateT //  Current state
-	socket          *orvibo.Device
-	humidityLow     int
-	humidityHigh    int
-	discoverSockets func() map[string]*orvibo.Device
-	config          func()
-	monitorHumidity func()
+type piHumidifierInterface interface {
+	config()
+	discoverSockets() map[string]*orvibo.Device
+	monitorHumidity()
 }
 
-func config(hum *PiHumidifier) {
+//PiHumidifier is our main class
+type PiHumidifier struct {
+	state        stateT //  Current state
+	socket       *orvibo.Device
+	devices      map[string]*orvibo.Device
+	humidityLow  int
+	humidityHigh int
+}
+
+func (hum *PiHumidifier) config() {
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Print("What can I do for you?\n")
 
@@ -64,7 +67,9 @@ func config(hum *PiHumidifier) {
 		command = strings.ToLower(strings.TrimSpace(command))
 
 		if command == "discover" {
+			fmt.Println("Discover")
 			hum.state = stateCONFIGSCAN
+			return
 		} else if command == "exit" || command == "no" {
 			os.Exit(3)
 		} else if command == "monitor" {
@@ -76,7 +81,7 @@ func config(hum *PiHumidifier) {
 	}
 }
 
-func discoverSockets(hum *PiHumidifier) map[string]*orvibo.Device {
+func (hum *PiHumidifier) discoverSockets() map[string]*orvibo.Device {
 	timeoutChan := time.NewTimer(time.Second * 5).C
 
 	ready, err := orvibo.Prepare() // You ready?
@@ -113,20 +118,24 @@ func discoverSockets(hum *PiHumidifier) map[string]*orvibo.Device {
 }
 
 func (hum *PiHumidifier) executeFsm() {
+	fmt.Println("In FSM")
 	for {
 		switch hum.state {
 		case stateSTART:
+			fmt.Println("State Start")
 			hum.config()
 		case stateCONFIGSCAN:
-			hum.discoverSockets()
+			hum.devices = hum.discoverSockets()
+			hum.state = stateSTART
 		case stateMONITOR:
+			fmt.Println("State monitor")
 			hum.monitorHumidity()
 		}
 	}
 }
 
 func main() {
-	hum := &PiHumidifier{}
-	hum.state = stateSTART
+	fmt.Println("Starting")
+	hum := &PiHumidifier{humidityHigh: 60, humidityLow: 35, state: stateSTART, socket: nil}
 	hum.executeFsm()
 }
