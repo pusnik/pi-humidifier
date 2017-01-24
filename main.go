@@ -13,18 +13,6 @@ import (
 	"github.com/pusnik/go-orvibo"
 )
 
-func monitorHumidity(hum *PiHumidifier) {
-	sensorType := dht.DHT22
-	temperature, humidity, retried, err :=
-		dht.ReadDHTxxWithRetry(sensorType, 3, false, 10)
-	if err != nil {
-		log.Fatal(err)
-	}
-	// print temperature and humidity
-	fmt.Printf("Temperature = %v*C, Humidity = %v%% (retried %d times)\n",
-		temperature, humidity, retried)
-}
-
 //  States we can be in at any point in time
 type stateT int
 
@@ -55,6 +43,18 @@ type PiHumidifier struct {
 	humidityHigh int
 }
 
+func (hum *PiHumidifier)  monitorHumidity() {
+        sensorType := dht.DHT22
+        temperature, humidity, retried, err :=
+                dht.ReadDHTxxWithRetry(sensorType, 3, false, 10)
+        if err != nil {
+                log.Fatal(err)
+        }
+        // print temperature and humidity
+        fmt.Printf("Temperature = %v*C, Humidity = %v%% (retried %d times)\n",
+                temperature, humidity, retried)
+}
+
 func (hum *PiHumidifier) config() {
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Print("What can I do for you?\n")
@@ -74,6 +74,7 @@ func (hum *PiHumidifier) config() {
 			os.Exit(3)
 		} else if command == "monitor" {
 			hum.state = stateMONITORREADTEMPHUMID
+			return
 		} else {
 			fmt.Println("Unknown command!")
 		}
@@ -127,7 +128,7 @@ func (hum *PiHumidifier) executeFsm() {
 		case stateCONFIGSCAN:
 			hum.devices = hum.discoverSockets()
 			hum.state = stateSTART
-		case stateMONITOR:
+		case stateMONITORREADTEMPHUMID:
 			fmt.Println("State monitor")
 			hum.monitorHumidity()
 		}
